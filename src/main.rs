@@ -8,17 +8,14 @@ use std::fmt;
 use std::io::Error;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
-use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
+use std::sync::RwLock;
 
 use rand;
 use rand::Rng;
-use winapi::_core::ptr::null;
 #[cfg(windows)]
 use winapi::_core::ptr::null_mut;
-#[cfg(windows)]
-use winapi::ctypes::*;
+// #[cfg(windows)]
+// use winapi::ctypes::*;
 #[cfg(windows)]
 use winapi::shared::basetsd::*;
 #[cfg(windows)]
@@ -65,7 +62,7 @@ impl Universe {
         let height = CELL_SIZE as u32;
 
         let cells = (0..width * height)
-            .map(|i| {
+            .map(|_| {
                 let r: i32 = rag.gen_range(1, 10);
                 if r > 5 {
                     Cell::Alive
@@ -195,7 +192,7 @@ fn draw_rec(cell: &Cell, hdc: HDC, c: i32, r: i32) {
 }
 
 #[cfg(windows)]
-unsafe extern "system" fn window_proc(mut hwnd: HWND, u_msg: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     match u_msg {
         WM_CLOSE => {
             DestroyWindow(hwnd);
@@ -233,10 +230,10 @@ unsafe extern "system" fn window_proc(mut hwnd: HWND, u_msg: UINT, w_param: WPAR
         }
         WM_LBUTTONDOWN => {
             let hdc = GetDC(hwnd);
-            let xPos = LOWORD(l_param as u32);
-            let yPos = HIWORD(l_param as u32);
-            let col = xPos / (COL_LEN + 1) as u16;
-            let row = yPos / (ROW_LEN + 1) as u16;
+            let x_pos = LOWORD(l_param as u32);
+            let y_pos = HIWORD(l_param as u32);
+            let col = x_pos / (COL_LEN + 1) as u16;
+            let row = y_pos / (ROW_LEN + 1) as u16;
             let mut u = UNIVERSE.write().unwrap();
             u.set_cell(col as u32, row as u32);
             draw_rec(&Cell::Alive, hdc, col as i32, row as i32);
@@ -245,7 +242,7 @@ unsafe extern "system" fn window_proc(mut hwnd: HWND, u_msg: UINT, w_param: WPAR
         }
         WM_DRAWITEM => {
             let hdc = GetDC(hwnd);
-            let mut u = UNIVERSE.read().unwrap();
+            let u = UNIVERSE.read().unwrap();
             // println!("{}", u);
             let z = format!("周期: {}", u.count).encode_utf16().collect::<Vec<u16>>();
             // SetWindowTextW(hwnd, z.as_ptr());
@@ -268,9 +265,9 @@ unsafe extern "system" fn window_proc(mut hwnd: HWND, u_msg: UINT, w_param: WPAR
 #[cfg(windows)]
 unsafe extern "system" fn tick_run(
     hwnd: HWND,
-    a: UINT,
-    b: UINT_PTR,
-    d: DWORD,
+    _a: UINT,
+    _b: UINT_PTR,
+    _d: DWORD,
 ) {
     UNIVERSE.write().unwrap().tick();
     SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
@@ -279,32 +276,35 @@ unsafe extern "system" fn tick_run(
 #[cfg(windows)]
 unsafe extern "system" fn draw_run(
     hwnd: HWND,
-    a: UINT,
-    b: UINT_PTR,
-    d: DWORD,
+    _a: UINT,
+    _b: UINT_PTR,
+    _d: DWORD,
 ) {
     SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
 }
 
 #[cfg(windows)]
 fn create_windows(title: &str) -> Result<(), Error> {
+
     // let wide: Vec<u16> = title.to_string().encode_utf16().chain(once(0)).collect();
-    let wide: Vec<u16> = OsStr::new(title).encode_wide().chain(once(0)).collect();
+    let wide: Vec<u16> = OsStr::new(title).encode_wide().collect();
     unsafe {
         let h_instance: HINSTANCE = GetModuleHandleW(null_mut());
-        let wnd_class = WNDCLASSW {
+        let wnd_class = WNDCLASSEXW {
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(window_proc),
             cbClsExtra: 0,
             cbWndExtra: 0,
             hInstance: h_instance,
-            hIcon: LoadIconA(null_mut(), IDI_APPLICATION as *const i8),
-            hCursor: LoadCursorA(null_mut(), IDC_HAND as *const i8),
+            hIcon: LoadIconW(null_mut(), IDI_APPLICATION),
+            hCursor: LoadCursorW(null_mut(), IDC_HAND),
             hbrBackground: (COLOR_WINDOW + 1) as HBRUSH,
             lpszMenuName: null_mut(),
             lpszClassName: wide.as_ptr(),
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            hIconSm: LoadIconW(null_mut(), IDI_APPLICATION),
         };
-        RegisterClassW(&wnd_class);
+        RegisterClassExW(&wnd_class);
         let hwnd = CreateWindowExW(
             WS_EX_APPWINDOW,
             wnd_class.lpszClassName,
