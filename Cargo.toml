@@ -1,0 +1,14 @@
+[package]
+name = "winapi_demo"
+version = "0.1.0"
+authors = ["luokai <kaiv2@outlook.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lazy_static = "1.4.0"
+rand = "0.7.3"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.8", features = ["winuser","libloaderapi"] }
