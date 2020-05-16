@@ -282,12 +282,15 @@ unsafe extern "system" fn draw_run(
 ) {
     SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
 }
-
+fn to_wstring(str: &str) -> *const u16 {
+    unsafe {
+        let v: Vec<u16> = OsStr::new(str).encode_wide().chain(Some(0).into_iter()).collect();
+        return v.as_ptr();
+    }
+}
 #[cfg(windows)]
 fn create_windows(title: &str) -> Result<(), Error> {
 
-    // let wide: Vec<u16> = title.to_string().encode_utf16().chain(once(0)).collect();
-    let wide: Vec<u16> = OsStr::new(title).encode_wide().collect();
     unsafe {
         let h_instance: HINSTANCE = GetModuleHandleW(null_mut());
         let wnd_class = WNDCLASSEXW {
@@ -300,7 +303,7 @@ fn create_windows(title: &str) -> Result<(), Error> {
             hCursor: LoadCursorW(null_mut(), IDC_HAND),
             hbrBackground: (COLOR_WINDOW + 1) as HBRUSH,
             lpszMenuName: null_mut(),
-            lpszClassName: wide.as_ptr(),
+            lpszClassName: to_wstring(title),
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             hIconSm: LoadIconW(null_mut(), IDI_APPLICATION),
         };
@@ -308,7 +311,7 @@ fn create_windows(title: &str) -> Result<(), Error> {
         let hwnd = CreateWindowExW(
             WS_EX_APPWINDOW,
             wnd_class.lpszClassName,
-            wide.as_ptr(),
+            to_wstring(title),
             WS_EX_LAYERED | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -340,7 +343,16 @@ fn create_windows(title: &str) -> Result<(), Error> {
     Ok(())
 }
 
+fn hide_console_window() {
+    unsafe {
+        let window = winapi::um::wincon::GetConsoleWindow();
+        if window != std::ptr::null_mut() {
+            ShowWindow(window, SW_HIDE);
+        }
+    }
+}
 
 fn main() {
+    hide_console_window();
     create_windows("生命游戏").unwrap();
 }
