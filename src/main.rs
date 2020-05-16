@@ -259,7 +259,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
         }
         _ => ()
     };
-    return DefWindowProcA(hwnd, u_msg, w_param, l_param);
+    return DefWindowProcW(hwnd, u_msg, w_param, l_param);
 }
 
 #[cfg(windows)]
@@ -284,7 +284,7 @@ unsafe extern "system" fn draw_run(
 }
 fn to_wstring(str: &str) -> *const u16 {
     unsafe {
-        let v: Vec<u16> = OsStr::new(str).encode_wide().chain(Some(0).into_iter()).collect();
+        let v: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
         return v.as_ptr();
     }
 }
