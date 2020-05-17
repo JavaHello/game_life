@@ -179,10 +179,12 @@ impl Universe {
             self.cells[i as usize] = Cell::Dead;
         }
         self.stop_calc();
+        self.start_draw();
     }
 
     fn reset(&mut self) {
         self.count = 0;
+        self.start_draw();
         self.cells = Universe::gen_map(self.width, self.height);
     }
 
@@ -210,6 +212,13 @@ impl Universe {
 
     fn change_calc_state(&mut self) {
         self.calc_state = !self.calc_state;
+    }
+    fn change_draw_state(&mut self) {
+        self.draw_state = !self.draw_state;
+    }
+    fn change_state(&mut self) {
+        self.change_calc_state();
+        self.change_draw_state();
     }
 
     fn draw_title(&self, hdc: HDC, title: String) {
@@ -328,7 +337,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
 
             if key_down(VK_F2) {
                 let mut u = UNIVERSE.write().unwrap();
-                u.change_calc_state();
+                u.change_state();
             }
         }
         WM_KEYUP => {}
@@ -426,11 +435,19 @@ unsafe extern "system" fn tick_run(
     _b: UINT_PTR,
     _d: DWORD,
 ) {
+    let mut stop_draw = false;
     if !UNIVERSE.read().unwrap().is_calc_stop() {
         UNIVERSE.write().unwrap().tick();
+    } else {
+        stop_draw = true;
     }
     if !UNIVERSE.read().unwrap().is_draw_stop() {
         SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
+    }
+    if stop_draw {
+        if !UNIVERSE.read().unwrap().is_draw_stop() {
+            UNIVERSE.write().unwrap().stop_draw();
+        }
     }
 }
 
