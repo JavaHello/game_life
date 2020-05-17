@@ -42,7 +42,7 @@ lazy_static! {
  static  ref   UNIVERSE:RwLock<Universe> = RwLock::new(Universe::new());
 }
 
-#[derive(Copy, PartialEq, Clone)]
+#[derive(Copy, PartialEq, Clone, Debug)]
 enum Cell {
     Alive = 1,
     Dead = 0,
@@ -53,39 +53,45 @@ pub struct Universe {
     height: u32,
     cells: Vec<Cell>,
     count: i64,
+    stop: bool,
+
 }
 
 impl Universe {
     pub fn new() -> Universe {
-        let mut rag = rand::thread_rng();
         let width = CELL_SIZE as u32;
         let height = CELL_SIZE as u32;
 
-        let cells = (0..width * height)
+        let cells = Universe::gen_map(width, height);
+        Universe {
+            width,
+            height,
+            cells,
+            count: 0,
+            stop: false,
+        }
+    }
+    fn gen_map(width: u32, height: u32) -> Vec<Cell> {
+        let mut rag = rand::thread_rng();
+        (0..width * height)
             .map(|_| {
-                let r: i32 = rag.gen_range(1, 10);
+                let r: i32 = rag.gen_range(0, 10);
                 if r > 5 {
                     Cell::Alive
                 } else {
                     Cell::Dead
                 }
             })
-            .collect();
-        Universe {
-            width,
-            height,
-            cells,
-            count: 0,
-        }
+            .collect()
     }
     fn get_index(&self, row: u32, column: u32) -> usize {
         (row * self.width + column) as usize
     }
 
-    fn set_cell(&mut self, row: u32, column: u32) {
-        let index = self.get_index(row, column);
-        self.cells.remove(index);
-        self.cells.insert(index, Cell::Alive);
+    fn set_cell(&mut self, c: u32, r: u32) {
+        let index = self.get_index(r, c);
+        self.cells[index] = Cell::Alive;
+        // self.cells.insert(index, Cell::Alive);
     }
 
     fn live_neighbor_count(&self, row: u32, column: u32) -> u8 {
@@ -159,36 +165,90 @@ fn print_message(msg: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn draw_rec(cell: &Cell, hdc: HDC, c: i32, r: i32) {
-    unsafe {
-        let hbr = match cell {
-            Cell::Alive => {
-                CreateSolidBrush(RGB(0, 0, 0))
-            }
-            Cell::Dead => {
-                CreateSolidBrush(RGB(255, 255, 255))
-            }
-        };
-        let rec = RECT {
-            left: c * (COL_LEN + 1) + 1,
-            top: r * (ROW_LEN + 1) + 1,
-            right: c * (COL_LEN + 1) + COL_LEN,
-            bottom: r * (ROW_LEN + 1) + ROW_LEN,
-        };
-        // 画刷选择到当前DC中
-        let org_brs = SelectObject(hdc, hbr as HGDIOBJ) as HBRUSH;
-        // Rectangle(hdc, c * (COL_LEN + 1) + 1, r * (ROW_LEN + 1) + 1, c * (COL_LEN + 1) + COL_LEN, r * (ROW_LEN + 1) + ROW_LEN);
+struct KeyState {
+    state: i8,
+    x: i32,
+    y: i32,
+}
 
-        FillRect(
-            hdc,
-            &rec,
-            hbr,
-        );
-
-        // 选回原先的画刷
-        SelectObject(hdc, org_brs as HGDIOBJ);
-        DeleteObject(hbr as HGDIOBJ);
+impl Universe {
+    fn dead_all(&mut self) {
+        for i in 0..self.width * self.height {
+            self.cells[i as usize] = Cell::Dead;
+        }
     }
+
+    fn reset(&mut self) {
+        self.cells = Universe::gen_map(self.width, self.height);
+    }
+
+
+    fn stop(&mut self) {
+        self.stop = true;
+    }
+
+    fn start(&mut self) {
+        self.stop = false;
+    }
+
+    fn draw_change(&mut self, cell: Cell, hdc: HDC, c: i32, r: i32) {
+        if c >= self.width as i32 || r >= self.height as i32 {
+            return;
+        }
+        // let index = self.get_index(r as u32, c as u32);
+        // println!("index: {}", index);
+        self.set_cell(c as u32, r as u32);
+        self.draw_rec(&cell, hdc, c, r);
+        // println!("cell: {:?}", self.cells[index]);
+    }
+
+    fn draw_rec(&self, cell: &Cell, hdc: HDC, c: i32, r: i32) {
+        unsafe {
+            let hbr = match cell {
+                Cell::Alive => {
+                    CreateSolidBrush(RGB(0, 0, 0))
+                }
+                Cell::Dead => {
+                    CreateSolidBrush(RGB(255, 255, 255))
+                }
+            };
+            let rec = RECT {
+                left: c * (COL_LEN + 1) + 1,
+                top: r * (ROW_LEN + 1) + 1,
+                right: c * (COL_LEN + 1) + COL_LEN,
+                bottom: r * (ROW_LEN + 1) + ROW_LEN,
+            };
+            // 画刷选择到当前DC中
+            let org_brs = SelectObject(hdc, hbr as HGDIOBJ) as HBRUSH;
+            // Rectangle(hdc, c * (COL_LEN + 1) + 1, r * (ROW_LEN + 1) + 1, c * (COL_LEN + 1) + COL_LEN, r * (ROW_LEN + 1) + ROW_LEN);
+
+            FillRect(
+                hdc,
+                &rec,
+                hbr,
+            );
+
+            // 选回原先的画刷
+            SelectObject(hdc, org_brs as HGDIOBJ);
+            DeleteObject(hbr as HGDIOBJ);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn key_down(vk_code: i32) -> bool {
+    unsafe {
+        if GetAsyncKeyState(vk_code) < 0 {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(windows)]
+fn key_up(vk_code: i32) -> bool {
+    !key_down(vk_code)
 }
 
 #[cfg(windows)]
@@ -228,6 +288,38 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
             }
             EndPaint(hwnd, &ps);
         }
+        WM_KEYDOWN => {
+            if key_down(VK_F5) {
+                let mut u = UNIVERSE.write().unwrap();
+                u.reset();
+            }
+            if key_down(VK_F4) {
+                let mut u = UNIVERSE.write().unwrap();
+                u.dead_all();
+            }
+        }
+        WM_KEYUP => {}
+        WM_MOUSEMOVE => {
+            // println!("WM_MOUSEMOVE");
+            // let key_state = GetAsyncKeyState(VK_LBUTTON);
+            // println!("key_state: {}", key_state);
+
+            if key_down(VK_LBUTTON) {
+                let hdc = GetDC(hwnd);
+                let x_pos = LOWORD(l_param as u32);
+                let y_pos = HIWORD(l_param as u32);
+                let col = x_pos / (COL_LEN + 1) as u16;
+                let row = y_pos / (ROW_LEN + 1) as u16;
+                let mut u = UNIVERSE.write().unwrap();
+                u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
+                // println!("c: {}, r: {}", col, row);
+                ReleaseDC(hwnd, hdc);   //归还系统绘图设备
+            }
+        }
+        WM_LBUTTONUP => {
+            let mut u = UNIVERSE.write().unwrap();
+            u.start();
+        }
         WM_LBUTTONDOWN => {
             let hdc = GetDC(hwnd);
             let x_pos = LOWORD(l_param as u32);
@@ -235,8 +327,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
             let col = x_pos / (COL_LEN + 1) as u16;
             let row = y_pos / (ROW_LEN + 1) as u16;
             let mut u = UNIVERSE.write().unwrap();
-            u.set_cell(col as u32, row as u32);
-            draw_rec(&Cell::Alive, hdc, col as i32, row as i32);
+            u.stop();
+            u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
             // SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
             ReleaseDC(hwnd, hdc);   //归还系统绘图设备
         }
@@ -244,15 +336,14 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
             let hdc = GetDC(hwnd);
             let u = UNIVERSE.read().unwrap();
             // println!("{}", u);
+            for c in 0..CELL_SIZE {
+                for r in 0..CELL_SIZE {
+                    u.draw_rec(&u.cells[u.get_index(r as u32, c as u32)], hdc, c, r);
+                }
+            }
             let z = format!("周期: {}", u.count).encode_utf16().collect::<Vec<u16>>();
             // SetWindowTextW(hwnd, z.as_ptr());
             TextOutW(hdc, CELL_SIZE * (COL_LEN + 0) - 2 * COL_LEN, 0, z.as_ptr(), z.len() as i32);
-            for c in 0..CELL_SIZE {
-                for r in 0..CELL_SIZE {
-                    draw_rec(&u.cells[u.get_index(c as u32, r as u32)], hdc, c, r);
-                }
-            }
-
             // BitBlt(hdc, 0, 0, WIDTH, HEIGHT, mem_dc, 0, 0, SRCCOPY);//复制到系统设备上显示
             // DeleteDC(mem_dc);        //释放辅助绘图设备
             ReleaseDC(hwnd, hdc);   //归还系统绘图设备
@@ -269,8 +360,10 @@ unsafe extern "system" fn tick_run(
     _b: UINT_PTR,
     _d: DWORD,
 ) {
-    UNIVERSE.write().unwrap().tick();
-    SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
+    if !UNIVERSE.read().unwrap().stop {
+        UNIVERSE.write().unwrap().tick();
+        SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
+    }
 }
 
 #[cfg(windows)]
@@ -282,15 +375,16 @@ unsafe extern "system" fn draw_run(
 ) {
     SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
 }
+
 fn to_wstring(str: &str) -> *const u16 {
     unsafe {
         let v: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
         return v.as_ptr();
     }
 }
+
 #[cfg(windows)]
 fn create_windows(title: &str) -> Result<(), Error> {
-
     unsafe {
         let h_instance: HINSTANCE = GetModuleHandleW(null_mut());
         let wnd_class = WNDCLASSEXW {
