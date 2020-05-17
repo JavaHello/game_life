@@ -53,8 +53,8 @@ pub struct Universe {
     height: u32,
     cells: Vec<Cell>,
     count: i64,
-    stop: bool,
-
+    calc_state: bool,
+    draw_state: bool,
 }
 
 impl Universe {
@@ -68,7 +68,8 @@ impl Universe {
             height,
             cells,
             count: 0,
-            stop: false,
+            calc_state: true,
+            draw_state: true,
         }
     }
     fn gen_map(width: u32, height: u32) -> Vec<Cell> {
@@ -88,9 +89,9 @@ impl Universe {
         (row * self.width + column) as usize
     }
 
-    fn set_cell(&mut self, c: u32, r: u32) {
+    fn set_cell(&mut self, cell: Cell, c: u32, r: u32) {
         let index = self.get_index(r, c);
-        self.cells[index] = Cell::Alive;
+        self.cells[index] = cell;
         // self.cells.insert(index, Cell::Alive);
     }
 
@@ -173,22 +174,49 @@ struct KeyState {
 
 impl Universe {
     fn dead_all(&mut self) {
+        self.count = 0;
         for i in 0..self.width * self.height {
             self.cells[i as usize] = Cell::Dead;
         }
+        self.stop_calc();
     }
 
     fn reset(&mut self) {
+        self.count = 0;
         self.cells = Universe::gen_map(self.width, self.height);
     }
 
 
-    fn stop(&mut self) {
-        self.stop = true;
+    fn is_calc_stop(&self) -> bool {
+        !self.calc_state
     }
 
-    fn start(&mut self) {
-        self.stop = false;
+
+    fn is_draw_stop(&self) -> bool {
+        !self.draw_state
+    }
+
+    fn stop_draw(&mut self) {
+        self.draw_state = false
+    }
+
+    fn start_draw(&mut self) {
+        self.draw_state = true
+    }
+
+    fn stop_calc(&mut self) {
+        self.calc_state = false
+    }
+
+    fn change_calc_state(&mut self) {
+        self.calc_state = !self.calc_state;
+    }
+
+    fn draw_title(&self, hdc: HDC, title: String) {
+        let z = title.encode_utf16().collect::<Vec<u16>>();
+        unsafe {
+            TextOutW(hdc, CELL_SIZE * (COL_LEN + 0) - 2 * COL_LEN, 0, z.as_ptr(), z.len() as i32);
+        }
     }
 
     fn draw_change(&mut self, cell: Cell, hdc: HDC, c: i32, r: i32) {
@@ -197,7 +225,7 @@ impl Universe {
         }
         // let index = self.get_index(r as u32, c as u32);
         // println!("index: {}", index);
-        self.set_cell(c as u32, r as u32);
+        self.set_cell(cell, c as u32, r as u32);
         self.draw_rec(&cell, hdc, c, r);
         // println!("cell: {:?}", self.cells[index]);
     }
@@ -297,40 +325,79 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
                 let mut u = UNIVERSE.write().unwrap();
                 u.dead_all();
             }
+
+            if key_down(VK_F2) {
+                let mut u = UNIVERSE.write().unwrap();
+                u.change_calc_state();
+            }
         }
         WM_KEYUP => {}
         WM_MOUSEMOVE => {
             // println!("WM_MOUSEMOVE");
             // let key_state = GetAsyncKeyState(VK_LBUTTON);
             // println!("key_state: {}", key_state);
-
             if key_down(VK_LBUTTON) {
+                if UNIVERSE.read().unwrap().is_calc_stop() {
+                    let hdc = GetDC(hwnd);
+                    let x_pos = LOWORD(l_param as u32);
+                    let y_pos = HIWORD(l_param as u32);
+                    let col = x_pos / (COL_LEN + 1) as u16;
+                    let row = y_pos / (ROW_LEN + 1) as u16;
+                    let mut u = UNIVERSE.write().unwrap();
+                    u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
+                    // println!("c: {}, r: {}", col, row);
+                    ReleaseDC(hwnd, hdc);   //归还系统绘图设备
+                }
+            }
+            if key_down(VK_RBUTTON) {
+                if UNIVERSE.read().unwrap().is_calc_stop() {
+                    let hdc = GetDC(hwnd);
+                    let x_pos = LOWORD(l_param as u32);
+                    let y_pos = HIWORD(l_param as u32);
+                    let col = x_pos / (COL_LEN + 1) as u16;
+                    let row = y_pos / (ROW_LEN + 1) as u16;
+                    let mut u = UNIVERSE.write().unwrap();
+                    u.draw_change(Cell::Dead, hdc, col as i32, row as i32);
+                    // println!("c: {}, r: {}", col, row);
+                    ReleaseDC(hwnd, hdc);   //归还系统绘图设备
+                }
+            }
+        }
+        WM_LBUTTONUP => {
+            let mut u = UNIVERSE.write().unwrap();
+            u.start_draw();
+        }
+        WM_RBUTTONUP => {
+            let mut u = UNIVERSE.write().unwrap();
+            u.start_draw();
+        }
+        WM_RBUTTONDOWN => {
+            if UNIVERSE.read().unwrap().is_calc_stop() {
                 let hdc = GetDC(hwnd);
                 let x_pos = LOWORD(l_param as u32);
                 let y_pos = HIWORD(l_param as u32);
                 let col = x_pos / (COL_LEN + 1) as u16;
                 let row = y_pos / (ROW_LEN + 1) as u16;
                 let mut u = UNIVERSE.write().unwrap();
-                u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
-                // println!("c: {}, r: {}", col, row);
+                u.stop_draw();
+                u.draw_change(Cell::Dead, hdc, col as i32, row as i32);
+                // SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
                 ReleaseDC(hwnd, hdc);   //归还系统绘图设备
             }
         }
-        WM_LBUTTONUP => {
-            let mut u = UNIVERSE.write().unwrap();
-            u.start();
-        }
         WM_LBUTTONDOWN => {
-            let hdc = GetDC(hwnd);
-            let x_pos = LOWORD(l_param as u32);
-            let y_pos = HIWORD(l_param as u32);
-            let col = x_pos / (COL_LEN + 1) as u16;
-            let row = y_pos / (ROW_LEN + 1) as u16;
-            let mut u = UNIVERSE.write().unwrap();
-            u.stop();
-            u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
-            // SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
-            ReleaseDC(hwnd, hdc);   //归还系统绘图设备
+            if UNIVERSE.read().unwrap().is_calc_stop() {
+                let hdc = GetDC(hwnd);
+                let x_pos = LOWORD(l_param as u32);
+                let y_pos = HIWORD(l_param as u32);
+                let col = x_pos / (COL_LEN + 1) as u16;
+                let row = y_pos / (ROW_LEN + 1) as u16;
+                let mut u = UNIVERSE.write().unwrap();
+                u.stop_draw();
+                u.draw_change(Cell::Alive, hdc, col as i32, row as i32);
+                // SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
+                ReleaseDC(hwnd, hdc);   //归还系统绘图设备
+            }
         }
         WM_DRAWITEM => {
             let hdc = GetDC(hwnd);
@@ -341,9 +408,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, 
                     u.draw_rec(&u.cells[u.get_index(r as u32, c as u32)], hdc, c, r);
                 }
             }
-            let z = format!("周期: {}", u.count).encode_utf16().collect::<Vec<u16>>();
+            u.draw_title(hdc, format!("周期: {}", u.count));
             // SetWindowTextW(hwnd, z.as_ptr());
-            TextOutW(hdc, CELL_SIZE * (COL_LEN + 0) - 2 * COL_LEN, 0, z.as_ptr(), z.len() as i32);
             // BitBlt(hdc, 0, 0, WIDTH, HEIGHT, mem_dc, 0, 0, SRCCOPY);//复制到系统设备上显示
             // DeleteDC(mem_dc);        //释放辅助绘图设备
             ReleaseDC(hwnd, hdc);   //归还系统绘图设备
@@ -360,8 +426,10 @@ unsafe extern "system" fn tick_run(
     _b: UINT_PTR,
     _d: DWORD,
 ) {
-    if !UNIVERSE.read().unwrap().stop {
+    if !UNIVERSE.read().unwrap().is_calc_stop() {
         UNIVERSE.write().unwrap().tick();
+    }
+    if !UNIVERSE.read().unwrap().is_draw_stop() {
         SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
     }
 }
