@@ -533,5 +533,5 @@ fn hide_console_window() {
 
 fn main() {
     hide_console_window();
-    create_windows("生命游戏").unwrap();
+    create_windows("生命游戏\0").unwrap();
 }
