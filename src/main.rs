@@ -428,7 +428,7 @@ unsafe extern "system" fn tick_run(
 
 
 fn to_wstring(str: &str) -> *const u16 {
-    let v: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
+    let v: Vec<u16> = OsStr::new(str).to_os_string().encode_wide().chain(once(0)).collect();
     return v.as_ptr();
 }
 
@@ -497,5 +497,5 @@ fn hide_console_window() {
 
 fn main() {
     hide_console_window();
-    create_windows("生命游戏\0").unwrap();
+    create_windows("生命游戏").unwrap();
 }
