@@ -1,5 +1,5 @@
 [package]
-name = "winapi_demo"
+name = "life_game"
 version = "0.1.0"
 authors = ["luokai <kaiv2@outlook.com>"]
 edition = "2018"
