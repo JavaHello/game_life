@@ -149,28 +149,7 @@ impl fmt::Display for Universe {
     }
 }
 
-#[cfg(windows)]
-fn print_message(msg: &str) -> Result<i32, Error> {
-    let wide: Vec<u16> = OsStr::new(msg).encode_wide().chain(once(0)).collect();
-    let ret = unsafe { MessageBoxW(null_mut(), wide.as_ptr(), wide.as_ptr(), MB_OK) };
-    if ret == 0 {
-        Err(Error::last_os_error())
-    } else {
-        Ok(ret)
-    }
-}
 
-#[cfg(not(windows))]
-fn print_message(msg: &str) -> Result<(), Error> {
-    println!("{}", msg);
-    Ok(())
-}
-
-struct KeyState {
-    state: i8,
-    x: i32,
-    y: i32,
-}
 
 impl Universe {
     fn dead_all(&mut self) {
@@ -283,10 +262,6 @@ fn key_down(vk_code: i32) -> bool {
     }
 }
 
-#[cfg(windows)]
-fn key_up(vk_code: i32) -> bool {
-    !key_down(vk_code)
-}
 
 #[cfg(windows)]
 unsafe extern "system" fn window_proc(hwnd: HWND, u_msg: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -451,21 +426,10 @@ unsafe extern "system" fn tick_run(
     }
 }
 
-#[cfg(windows)]
-unsafe extern "system" fn draw_run(
-    hwnd: HWND,
-    _a: UINT,
-    _b: UINT_PTR,
-    _d: DWORD,
-) {
-    SendMessageW(hwnd, WM_DRAWITEM, 0, 0);
-}
 
 fn to_wstring(str: &str) -> *const u16 {
-    unsafe {
-        let v: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
-        return v.as_ptr();
-    }
+    let v: Vec<u16> = OsStr::new(str).encode_wide().chain(once(0)).collect();
+    return v.as_ptr();
 }
 
 #[cfg(windows)]
